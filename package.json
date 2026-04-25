@@ -5,10 +5,20 @@
   "type": "module",
   "description": "Telegram and WhatsApp bridges for a local Ollama instance.",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "clean": "rm -rf dist",
+    "clean:all": "npm run clean && rm -rf node_modules package-lock.json",
+    "reinstall": "npm run clean:all && npm install",
+    "build": "tsc -p tsconfig.json",
+    "prestart": "npm run build",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
   }
 }

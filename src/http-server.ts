@@ -1,18 +1,25 @@
-import http from "node:http";
+import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { info } from "./logger.js";
+import type { WhatsAppWebhook } from "./whatsapp-webhook.js";
 
-function readRequestBody(req) {
+function readRequestBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
 
-    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
 }
 
-export function createServer({ port, whatsappWebhook }) {
-  const server = http.createServer(async (req, res) => {
+export function createServer({
+  port,
+  whatsappWebhook
+}: {
+  port: number;
+  whatsappWebhook: WhatsAppWebhook | null;
+}): Promise<Server> {
+  const server = http.createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
     if (req.method === "GET" && url.pathname === "/healthz") {
@@ -43,4 +50,3 @@ export function createServer({ port, whatsappWebhook }) {
     });
   });
 }
-

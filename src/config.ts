@@ -1,9 +1,9 @@
-function readInt(value, fallback) {
+function readInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function readString(value, fallback = "") {
+function readString(value: string | undefined, fallback = ""): string {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
 

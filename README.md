@@ -26,6 +26,30 @@
 npm start
 ```
 
+For TypeScript development, use:
+
+```bash
+npm run dev
+```
+
+To remove build output:
+
+```bash
+npm run clean
+```
+
+To fully reset generated artifacts and installed packages:
+
+```bash
+npm run clean:all
+```
+
+To reset and reinstall dependencies:
+
+```bash
+npm run reinstall
+```
+
 ## Telegram
 
 The Telegram adapter uses long polling, so it works locally without any public URL.

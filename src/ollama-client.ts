@@ -1,14 +1,39 @@
 import { error as logError } from "./logger.js";
+import type { ChatMessage } from "./types.js";
+
+interface OllamaChatResponse {
+  message?: {
+    content?: string;
+  };
+}
 
 export class OllamaClient {
-  constructor({ baseUrl, model, systemPrompt, keepAlive }) {
+  private readonly baseUrl: string;
+
+  private readonly model: string;
+
+  private readonly systemPrompt: string;
+
+  private readonly keepAlive: string;
+
+  constructor({
+    baseUrl,
+    model,
+    systemPrompt,
+    keepAlive
+  }: {
+    baseUrl: string;
+    model: string;
+    systemPrompt: string;
+    keepAlive: string;
+  }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.model = model;
     this.systemPrompt = systemPrompt;
     this.keepAlive = keepAlive;
   }
 
-  async reply(messages, modelOverride) {
+  async reply(messages: ChatMessage[], modelOverride?: string): Promise<string> {
     const payload = {
       model: modelOverride ?? this.model,
       stream: false,
@@ -28,7 +53,7 @@ export class OllamaClient {
       throw new Error(`Ollama request failed with status ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as OllamaChatResponse;
     const content = data?.message?.content?.trim();
 
     if (!content) {

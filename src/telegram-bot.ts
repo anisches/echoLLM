@@ -1,24 +1,40 @@
 import { error as logError, info, warn } from "./logger.js";
+import type { ChatService } from "./chat-service.js";
+import type { ModelOption } from "./types.js";
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+interface TelegramUpdate {
+  update_id: number;
+  message?: {
+    text?: string;
+    chat?: {
+      id?: number;
+    };
+  };
+}
+
 export class TelegramBot {
-  constructor({ token, chatService, modelOptions, defaultModel }) {
-    this.token = token;
-    this.chatService = chatService;
-    this.modelOptions = modelOptions;
-    this.defaultModel = defaultModel;
-    this.offset = 0;
-    this.running = false;
+  private offset = 0;
+
+  private running = false;
+
+  constructor(
+    private readonly deps: {
+      token: string;
+      chatService: ChatService;
+      modelOptions: ModelOption[];
+      defaultModel: string;
+    }
+  ) {}
+
+  private get apiBase(): string {
+    return `https://api.telegram.org/bot${this.deps.token}`;
   }
 
-  get apiBase() {
-    return `https://api.telegram.org/bot${this.token}`;
-  }
-
-  async sendMessage(chatId, text) {
+  async sendMessage(chatId: number, text: string): Promise<void> {
     const response = await fetch(`${this.apiBase}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -35,7 +51,7 @@ export class TelegramBot {
     }
   }
 
-  async sendChatAction(chatId, action = "typing") {
+  async sendChatAction(chatId: number, action = "typing"): Promise<void> {
     const response = await fetch(`${this.apiBase}/sendChatAction`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -51,7 +67,7 @@ export class TelegramBot {
     }
   }
 
-  async pollOnce() {
+  async pollOnce(): Promise<void> {
     const response = await fetch(`${this.apiBase}/getUpdates`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -67,7 +83,7 @@ export class TelegramBot {
       throw new Error(`Telegram getUpdates failed: ${response.status} ${body}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { result?: TelegramUpdate[] };
     const updates = Array.isArray(data?.result) ? data.result : [];
 
     for (const update of updates) {
@@ -76,7 +92,7 @@ export class TelegramBot {
     }
   }
 
-  async handleUpdate(update) {
+  private async handleUpdate(update: TelegramUpdate): Promise<void> {
     const message = update?.message;
     const text = message?.text?.trim();
     const chatId = message?.chat?.id;
@@ -91,7 +107,7 @@ export class TelegramBot {
     }
 
     if (text === "/reset") {
-      this.chatService.sessionStore.reset(`telegram:${chatId}`);
+      this.deps.chatService.sessionStore.reset(`telegram:${chatId}`);
       await this.sendMessage(chatId, "Conversation reset.");
       return;
     }
@@ -101,22 +117,23 @@ export class TelegramBot {
       return;
     }
 
-    let typingTimer;
+    let typingTimer: ReturnType<typeof setInterval> | undefined;
     try {
       typingTimer = setInterval(() => {
-        this.sendChatAction(chatId).catch(() => {});
+        void this.sendChatAction(chatId).catch(() => {});
       }, 4500);
 
       await this.sendChatAction(chatId);
 
       const selectedModel =
-        this.chatService.sessionStore.getSelectedModel(`telegram:${chatId}`) ?? this.defaultModel;
-      const reply = await this.chatService.respond(`telegram:${chatId}`, text, {
+        this.deps.chatService.sessionStore.getSelectedModel(`telegram:${chatId}`) ??
+        this.deps.defaultModel;
+      const reply = await this.deps.chatService.respond(`telegram:${chatId}`, text, {
         model: selectedModel
       });
       await this.sendMessage(chatId, reply);
     } catch (err) {
-      logError("Telegram reply failed", { chatId, error: err?.message ?? err });
+      logError("Telegram reply failed", { chatId, error: err instanceof Error ? err.message : err });
       await this.sendMessage(chatId, "Sorry, I could not reach Ollama just now.");
     } finally {
       if (typingTimer) {
@@ -125,11 +142,11 @@ export class TelegramBot {
     }
   }
 
-  formatModelList() {
-    return this.modelOptions.map((option, index) => `${index + 1}. ${option.label}`).join("\n");
+  private formatModelList(): string {
+    return this.deps.modelOptions.map((option, index) => `${index + 1}. ${option.label}`).join("\n");
   }
 
-  resolveModelChoice(rawChoice) {
+  private resolveModelChoice(rawChoice: string): ModelOption | null {
     const choice = rawChoice.trim();
     if (!choice) {
       return null;
@@ -137,17 +154,18 @@ export class TelegramBot {
 
     const numeric = Number.parseInt(choice, 10);
     if (Number.isFinite(numeric)) {
-      return this.modelOptions[numeric - 1] ?? null;
+      return this.deps.modelOptions[numeric - 1] ?? null;
     }
 
-    return this.modelOptions.find((option) => option.value === choice || option.label === choice) ?? null;
+    return this.deps.modelOptions.find((option) => option.value === choice || option.label === choice) ?? null;
   }
 
-  async handleModelCommand(chatId, text) {
+  private async handleModelCommand(chatId: number, text: string): Promise<void> {
     const parts = text.split(/\s+/);
     const arg = parts.slice(1).join(" ").trim();
     const sessionId = `telegram:${chatId}`;
-    const currentModel = this.chatService.sessionStore.getSelectedModel(sessionId) ?? this.defaultModel;
+    const currentModel =
+      this.deps.chatService.sessionStore.getSelectedModel(sessionId) ?? this.deps.defaultModel;
 
     if (!arg) {
       await this.sendMessage(
@@ -171,11 +189,11 @@ export class TelegramBot {
       return;
     }
 
-    this.chatService.sessionStore.setSelectedModel(sessionId, selected.value);
+    this.deps.chatService.sessionStore.setSelectedModel(sessionId, selected.value);
     await this.sendMessage(chatId, `Switched to ${selected.label}.`);
   }
 
-  async start() {
+  async start(): Promise<void> {
     if (this.running) {
       return;
     }
@@ -187,13 +205,13 @@ export class TelegramBot {
       try {
         await this.pollOnce();
       } catch (err) {
-        warn("Telegram polling error", { error: err?.message ?? err });
+        warn("Telegram polling error", { error: err instanceof Error ? err.message : err });
         await sleep(3000);
       }
     }
   }
 
-  stop() {
+  stop(): void {
     this.running = false;
   }
 }

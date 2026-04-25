@@ -1,3 +1,5 @@
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 import { config } from "./config.js";
 import { info, warn } from "./logger.js";
 import { SessionStore } from "./session-store.js";
@@ -7,10 +9,9 @@ import { ChatService } from "./chat-service.js";
 import { TelegramBot } from "./telegram-bot.js";
 import { WhatsAppWebhook } from "./whatsapp-webhook.js";
 import { createServer } from "./http-server.js";
-import readline from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import type { ModelOption } from "./types.js";
 
-async function chooseModel(modelOptions, preferredModel) {
+async function chooseModel(modelOptions: ModelOption[], preferredModel: string): Promise<ModelOption> {
   if (preferredModel) {
     const preferredOption = modelOptions.find((option) => option.value === preferredModel);
     if (preferredOption) {
@@ -46,7 +47,7 @@ async function chooseModel(modelOptions, preferredModel) {
   }
 }
 
-async function main() {
+async function main(): Promise<void> {
   const sessionStore = new SessionStore(config.sessionMaxMessages);
   const discoveredModels = await discoverOllamaModels(config.ollamaHost);
   const modelOptions = mapModelsToOptions(discoveredModels);
@@ -67,7 +68,7 @@ async function main() {
   });
   const chatService = new ChatService({ ollamaClient, sessionStore });
 
-  let whatsappWebhook = null;
+  let whatsappWebhook: WhatsAppWebhook | null = null;
   if (config.whatsappVerifyToken && config.whatsappAccessToken && config.whatsappPhoneNumberId) {
     whatsappWebhook = new WhatsAppWebhook({
       verifyToken: config.whatsappVerifyToken,
@@ -93,8 +94,10 @@ async function main() {
       defaultModel: selectedModel
     });
 
-    telegramBot.start().catch((err) => {
-      warn("Telegram polling stopped unexpectedly", { error: err?.message ?? err });
+    void telegramBot.start().catch((err: unknown) => {
+      warn("Telegram polling stopped unexpectedly", {
+        error: err instanceof Error ? err.message : err
+      });
     });
   } else {
     warn("Telegram polling disabled because TELEGRAM_BOT_TOKEN is missing");
@@ -104,7 +107,7 @@ async function main() {
   info(`echoLLM is running with Ollama model "${selectedModel}"`, selectedOption);
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
   console.error(err);
   process.exit(1);
 });
